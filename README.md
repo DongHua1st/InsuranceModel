@@ -80,16 +80,15 @@ print(f"转换完成，结果已保存到 {output_json_file}")
 
 ## 微调
 
-  使用 `XTuner`训练， `XTuner`有各个模型的一键训练脚本，很方便。且对` InternLM2 `的支持度最高。
+  使用 `XTuner `训练， `XTuner `有各个模型的一键训练脚本，很方便。且对` InternLM2 `的支持度最高。
 
 ### XTuner
 
   使用 `XTuner` 进行微调，具体脚本可参考`configs`文件夹下的脚本，脚本内有较为详细的注释。
 
-| 基座模型          | 配置文件                               |
-| ----------------- | -------------------------------------- |
-| internlm-chat-7b  | internlm_chat_7b_qlora_medqa2019_e3.py |
-| internlm2-chat-7b | internlm2_1_8b_qlora_alpaca_e3_copy.py |
+| 基座模型         | 配置文件                               |
+| ---------------- | -------------------------------------- |
+| internlm-chat-7b | internlm_chat_7b_qlora_medqa2019_e3.py |
 
 微调方法如下:
 
@@ -101,7 +100,7 @@ cd ~/ft-medqa
 xtuner train  internlm_chat_7b_qlora_medqa2019_e3.py --deepspeed deepspeed_zero2
 ```
 
-2. 将得到的 `PTH` 模型转换为`HuggingFace`模型
+2. 将得到的 PTH 模型转换为 HuggingFace 模型
 
 ```
 internlm_chat_7b_qlora_medqa2019_e3
@@ -123,62 +122,166 @@ streamlit run /root/ft-medqa/code/InternLM/chat/web_demo.py --server.address 127
 
 效果演示
 
-![local_3](imgs/local_3.png)
+![local_2](imgs/local_2.png)
 
-## OpenXLab 部署 中医药知识问答助手
+![local_1](imgs/local_1.png)
+
+## OpenXLab 部署 保险知识问答助手
+
+### 1 上传模型
+
+按照教程内容安装并配置git，在openxlab中新建模型仓库，并上传模型文件。
+
+仓库目录如下：
+
+```
+├─insurance
+│  ├─.gitattributes                 
+│  ├─README.md       
+│  ├─config.json           
+|  ├─configuration_internlm2.py  
+|  ├─generation_config.json 
+|  ├─modeling_internlm2.py 
+|  ├─pytorch_model-00001-of-00002.bin 
+|  ├─pytorch_model-00002-of-00002.bin 
+|  ├─pytorch_model.bin.index.json
+|  ├─special_tokens_map.json
+|  ├─tokenization_internlm2.py
+|  ├─tokenization-special_internlm2.py
+|  ├─tokenizer.json  
+|  ├─tokenizer.model 
+│  └─tokenizer_config.json
+```
+
+###2 初始化项目结构
+
+创建一个新的 GitHub 仓库来存放您的 gradio 应用代码。项目结构如下：
+
+```
+├─InsuranceLM
+│  ├─app.py                 # Gradio 应用默认启动文件为app.py，应用代码相关的文件包含模型推理，应用的前端配置代码
+│  ├─requirements.txt       # 安装运行所需要的 Python 库依赖（pip 安装）
+│  ├─packages.txt           # 安装运行所需要的 Debian 依赖项（ apt-get 安装）
+|  ├─README.md              # 编写应用相关的介绍性的文档
+│  └─...
+```
+
+###3 部署应用
+在平台内新建gradio组件应用并启动。
 
 
 
+
+
+
+
+## LmDeploy部署
+### 1 环境配置
+
+基础环境配置：
+ 
+```bash
+$ /root/share/install_conda_env_internlm_base.sh lmdeploy
+$ conda activate lmdeploy
+pip install packaging
+pip install /root/share/wheels/flash_attn-2.4.2+cu118torch2.0cxx11abiTRUE-cp310-cp310-linux_x86_64.whl
+pip install lmdeploy
+```
+
+
+
+### 2 服务部署
+
+
+模型转换：
+
+
+离线转换需要在启动服务之前，将模型转为 lmdeploy TurboMind  的格式，如下所示。
+
+```bash
+lmdeploy convert internlm-chat-7b /path/to/internlm-chat-7b
+```
+
+
+执行完成后将会在当前目录生成一个 `workspace` 的文件夹。这里面包含的就是 TurboMind 和 Triton “模型推理”需要到的文件。
+
+
+
+模型转换完成后我们先尝试本地对话（`Bash Local Chat`），执行命令如下。
+
+```bash
+# Turbomind + Bash Local Chat
+lmdeploy chat turbomind ./workspace
+```
+
+启动后就可以和它进行对话了。
+
+输入后两次回车，退出时输入`exit` 回车两次即可。此时，Server 就是本地跑起来的模型（TurboMind），命令行可以看作是前端。
+
+
+
+
+## Lmdeploy&opencompass 量化以及量化评测
+
+
+
+
+
+### `KV Cache`量化
+
+应用示例：
+```python
+from lmdeploy import pipeline, TurbomindEngineConfig
+engine_config = TurbomindEngineConfig(quant_policy=8)
+pipe = pipeline("internlm/internlm2-chat-7b", backend_config=engine_config)
+response = pipe(["Hi, pls intro yourself", "Shanghai is"])
+print(response)
+```
+
+
+### `W4A16`量化
+
+控制台输入以下指令：
+
+```bash
+export HF_MODEL=insurance/final_model/model2
+export WORK_DIR=work_dir/insurancelm
+
+lmdeploy lite auto_awq \
+   $HF_MODEL \
+  --calib-dataset 'ptb' \
+  --calib-samples 128 \
+  --calib-seqlen 2048 \
+  --w-bits 4 \
+  --w-group-size 128 \
+  --work-dir $WORK_DIR
+```
+
+###问题
+由于我们使用的模型是InternLM-chat-1_8b，而两种量化方式仅支持将模型量化至4b或8b，故在执行指令的过程中出现错误。
+
+```bash
+Traceback (most recent call last):
+  File "/root/.conda/envs/lmdeploy/bin/lmdeploy", line 8, in <module>
+    sys.exit(run())
+  File "/root/.conda/envs/lmdeploy/lib/python3.10/site-packages/lmdeploy/cli/entrypoint.py", line 37, in run
+    args.run(args)
+  File "/root/.conda/envs/lmdeploy/lib/python3.10/site-packages/lmdeploy/cli/lite.py", line 131, in auto_awq
+    auto_awq(**kwargs)
+  File "/root/.conda/envs/lmdeploy/lib/python3.10/site-packages/lmdeploy/lite/apis/auto_awq.py", line 69, in auto_awq
+    quant_weights(model, fcs, w_bits, w_sym, w_group_size, device)
+  File "/root/.conda/envs/lmdeploy/lib/python3.10/site-packages/lmdeploy/lite/quantization/awq.py", line 216, in quant_weights
+    quantizer = WeightQuantizer(bits, symmetry, 'per_group', group_size)
+  File "/root/.conda/envs/lmdeploy/lib/python3.10/site-packages/lmdeploy/lite/quantization/weight/quantizer.py", line 67, in __init__
+    assert bits in [4, 8], "The 'bits' argument must be either 4 or 8."
+AssertionError: The 'bits' argument must be either 4 or 8.
+```
+
+且我们使用的1.8b模型规模已经较小，在主流的设备上也足以支持，故无需进行量化操作。
 
 
 
 
 ## OpenCompass 评测
 
-### 1. 面向GPU的环境安装
 
-```bash
-git clone https://github.com/open-compass/opencompass
-cd opencompass
-pip install -e .
-```
-
-### 2. 下载解压数据集
-
-```
-cp /share/temp/datasets/OpenCompassData-core-20231110.zip /root/opencompass/
-unzip OpenCompassData-core-20231110.zip
-```
-
-### 3. 启动评测
-
-```
-export MKL_SERVICE_FORCE_INTEL=1
-python run.py --datasets ceval_gen --hf-path /share/temp/model_repos/internlm-chat-7b/ --tokenizer-path /share/temp/model_repos/internlm-chat-7b/ --tokenizer-kwargs padding_side='left' truncation='left' trust_remote_code=True --model-kwargs trust_remote_code=True device_map='auto' --max-seq-len 2048 --max-out-len 16 --batch-size 4 --num-gpus 1 --debug
-```
-
-### 4. 保留相关结果
-
-```
-ceval-legal_professional: {'accuracy': 47.82608695652174}
-```
-
-全部评测结果可在目录`opencompassResult`中查看。
-
-
-
-## 💕 致谢
-
-### 项目成员
-
-* 俞曹-项目负责人 （负责项目规划，数据清洗及模型训练）
-* 范徐立（负责数据集收集、模型训练）
-* 陈博远（负责模型评测、模型部署）
-* 孙韬强（负责数据集收集、模型量化）
-* 邹锦帛 （负责数据集收集、模型量化）
-
-
-
-### 特别感谢
-
-***感谢上海人工智能实验室组织的 书生·浦语实战营 学习活动***
