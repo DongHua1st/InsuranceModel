@@ -153,7 +153,7 @@ streamlit run /root/ft-medqa/code/InternLM/chat/web_demo.py --server.address 127
 │  └─tokenizer_config.json
 ```
 
-###2 初始化项目结构
+### 2 初始化项目结构
 
 创建一个新的 GitHub 仓库来存放您的 gradio 应用代码。项目结构如下：
 
@@ -166,7 +166,7 @@ streamlit run /root/ft-medqa/code/InternLM/chat/web_demo.py --server.address 127
 │  └─...
 ```
 
-###3 部署应用
+### 3 部署应用
 在平台内新建gradio组件应用并启动。
 
 
